@@ -9,15 +9,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import Animated, {
-  FadeIn,
-  FadeOut,
-  SlideInDown,
-  SlideOutDown,
-} from 'react-native-reanimated';
 import { useCaptureStore } from '../store';
-
-const AnimatedView = Animated.createAnimatedComponent(View);
 
 // Integration configuration
 const INTEGRATIONS = [
@@ -77,23 +69,13 @@ export function SettingsModal() {
   return (
     <Modal
       visible={isSettingsModalOpen}
-      animationType="none"
+      animationType="slide"
       transparent
       onRequestClose={toggleSettingsModal}
     >
-      <Pressable style={styles.backdrop} onPress={toggleSettingsModal}>
-        <AnimatedView
-          entering={FadeIn}
-          exiting={FadeOut}
-          style={StyleSheet.absoluteFill}
-        />
-      </Pressable>
+      <Pressable style={styles.backdrop} onPress={toggleSettingsModal} />
 
-      <AnimatedView
-        entering={SlideInDown.springify().damping(20)}
-        exiting={SlideOutDown}
-        style={styles.modalContainer}
-      >
+      <View style={styles.modalContainer}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.handle} />
@@ -151,7 +133,7 @@ export function SettingsModal() {
           {/* Footer spacing */}
           <View style={styles.footer} />
         </ScrollView>
-      </AnimatedView>
+      </View>
     </Modal>
   );
 }

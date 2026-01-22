@@ -4,20 +4,10 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  Keyboard,
   Platform,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withSequence,
-  runOnJS,
-} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCaptureStore } from '../store';
-
-const AnimatedView = Animated.createAnimatedComponent(View);
 
 interface CaptureInputProps {
   autoFocus?: boolean;
@@ -28,11 +18,6 @@ export function CaptureInput({ autoFocus = true }: CaptureInputProps) {
   const [text, setText] = React.useState('');
 
   const { addCapture, settings } = useCaptureStore();
-
-  // Animation values
-  const scale = useSharedValue(1);
-  const translateY = useSharedValue(0);
-  const opacity = useSharedValue(1);
 
   // Focus input on mount if autoFocus enabled
   useEffect(() => {
@@ -57,22 +42,6 @@ export function CaptureInput({ autoFocus = true }: CaptureInputProps) {
     // Trigger haptic feedback
     triggerHaptic();
 
-    // Fire and Forget animation
-    // 1. Scale up slightly
-    scale.value = withSequence(
-      withSpring(1.02, { damping: 15 }),
-      withSpring(0.98, { damping: 15 }),
-      withSpring(1, { damping: 15 })
-    );
-
-    // 2. Slide up and fade out (simulating "sent")
-    translateY.value = withSpring(-20, { damping: 20 });
-    opacity.value = withSpring(0.3, { damping: 20 }, () => {
-      // Reset after animation
-      translateY.value = withSpring(0);
-      opacity.value = withSpring(1);
-    });
-
     // Clear input immediately (Fire and Forget UX)
     setText('');
 
@@ -85,15 +54,10 @@ export function CaptureInput({ autoFocus = true }: CaptureInputProps) {
 
     // Keep keyboard open for next capture
     inputRef.current?.focus();
-  }, [text, addCapture, scale, translateY, opacity, triggerHaptic]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }, { translateY: translateY.value }],
-    opacity: opacity.value,
-  }));
+  }, [text, addCapture, triggerHaptic]);
 
   return (
-    <AnimatedView style={[styles.container, animatedStyle]}>
+    <View style={styles.container}>
       <TextInput
         ref={inputRef}
         style={styles.input}
@@ -119,7 +83,7 @@ export function CaptureInput({ autoFocus = true }: CaptureInputProps) {
           <View style={styles.arrow} />
         </View>
       </TouchableOpacity>
-    </AnimatedView>
+    </View>
   );
 }
 

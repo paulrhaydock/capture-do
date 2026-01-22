@@ -6,15 +6,8 @@ import {
   FlatList,
   TouchableOpacity,
 } from 'react-native';
-import Animated, {
-  FadeInDown,
-  FadeOutUp,
-  Layout,
-} from 'react-native-reanimated';
 import { useCaptureStore } from '../store';
 import type { Capture } from '../types';
-
-const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 interface RecentCapturesProps {
   maxItems?: number;
@@ -56,15 +49,12 @@ export function RecentCaptures({ maxItems = 5, onViewAll }: RecentCapturesProps)
     return new Date(timestamp).toLocaleDateString();
   };
 
-  const renderItem = ({ item, index }: { item: Capture; index: number }) => {
+  const renderItem = ({ item }: { item: Capture }) => {
     const status = getStatusIndicator(item.status);
     const displayText = item.extractedTitle || item.rawText;
 
     return (
-      <AnimatedTouchable
-        entering={FadeInDown.delay(index * 50).springify()}
-        exiting={FadeOutUp}
-        layout={Layout.springify()}
+      <TouchableOpacity
         style={styles.captureItem}
         activeOpacity={0.7}
       >
@@ -89,7 +79,7 @@ export function RecentCaptures({ maxItems = 5, onViewAll }: RecentCapturesProps)
         <View style={[styles.statusDot, { backgroundColor: status.color }]}>
           <Text style={styles.statusLabel}>{status.label}</Text>
         </View>
-      </AnimatedTouchable>
+      </TouchableOpacity>
     );
   };
 

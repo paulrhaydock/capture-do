@@ -10,16 +10,8 @@ import {
   Pressable,
 } from 'react-native';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
-import Animated, {
-  FadeIn,
-  FadeOut,
-  SlideInDown,
-  SlideOutDown,
-} from 'react-native-reanimated';
 import { useCaptureStore } from '../store';
 import type { Capture, CategoryId, ProcessingStatus } from '../types';
-
-const AnimatedView = Animated.createAnimatedComponent(View);
 
 export function SmartListModal() {
   const {
@@ -148,24 +140,14 @@ export function SmartListModal() {
   return (
     <Modal
       visible={isListModalOpen}
-      animationType="none"
+      animationType="slide"
       transparent
       onRequestClose={toggleListModal}
     >
       <GestureHandlerRootView style={styles.gestureRoot}>
-        <Pressable style={styles.backdrop} onPress={toggleListModal}>
-          <AnimatedView
-            entering={FadeIn}
-            exiting={FadeOut}
-            style={StyleSheet.absoluteFill}
-          />
-        </Pressable>
+        <Pressable style={styles.backdrop} onPress={toggleListModal} />
 
-        <AnimatedView
-          entering={SlideInDown.springify().damping(20)}
-          exiting={SlideOutDown}
-          style={styles.modalContainer}
-        >
+        <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.handle} />
@@ -253,7 +235,7 @@ export function SmartListModal() {
               </View>
             }
           />
-        </AnimatedView>
+        </View>
       </GestureHandlerRootView>
     </Modal>
   );

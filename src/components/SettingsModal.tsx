@@ -5,9 +5,9 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  Switch,
   Pressable,
   ScrollView,
+  Alert,
 } from 'react-native';
 import Animated, {
   FadeIn,
@@ -16,24 +16,63 @@ import Animated, {
   SlideOutDown,
 } from 'react-native-reanimated';
 import { useCaptureStore } from '../store';
-import type { Settings } from '../types';
 
 const AnimatedView = Animated.createAnimatedComponent(View);
+
+// Integration configuration
+const INTEGRATIONS = [
+  { id: 'todoist', name: 'Todoist', emoji: '✅', connected: false },
+  { id: 'reminders', name: 'Reminders', emoji: '🔔', connected: false, isNative: true },
+  { id: 'claude', name: 'Claude', emoji: '🤖', connected: false },
+  { id: 'chatgpt', name: 'ChatGPT', emoji: '💬', connected: false },
+];
 
 export function SettingsModal() {
   const {
     isSettingsModalOpen,
     toggleSettingsModal,
-    settings,
-    updateSetting,
-    categories,
+    captures,
   } = useCaptureStore();
 
-  const themeOptions: { value: Settings['theme']; label: string; emoji: string }[] = [
-    { value: 'system', label: 'System', emoji: '📱' },
-    { value: 'light', label: 'Light', emoji: '☀️' },
-    { value: 'dark', label: 'Dark', emoji: '🌙' },
-  ];
+  const handleConnect = (integrationId: string, isNative?: boolean) => {
+    if (isNative) {
+      Alert.alert(
+        'Grant Access',
+        'This will request permission to access your Reminders.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Grant Access', onPress: () => console.log('Request reminders permission') },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Connect Account',
+        `Connect your ${integrationId} account via OAuth.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Connect', onPress: () => console.log(`Connect ${integrationId}`) },
+        ]
+      );
+    }
+  };
+
+  const handleExportAll = () => {
+    const captureCount = captures.length;
+    Alert.alert(
+      'Export All Captures',
+      `Export ${captureCount} captures to JSON?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Export',
+          onPress: () => {
+            // TODO: Implement actual export
+            Alert.alert('Exported', `${captureCount} captures exported successfully.`);
+          }
+        },
+      ]
+    );
+  };
 
   return (
     <Modal
@@ -59,119 +98,54 @@ export function SettingsModal() {
         <View style={styles.header}>
           <View style={styles.handle} />
           <Text style={styles.title}>Settings</Text>
+          <TouchableOpacity onPress={toggleSettingsModal} style={styles.closeButton}>
+            <Text style={styles.closeButtonText}>✕</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Appearance Section */}
+          {/* Integrations Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Appearance</Text>
+            <Text style={styles.sectionTitle}>INTEGRATIONS</Text>
 
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Theme</Text>
-              <View style={styles.themeOptions}>
-                {themeOptions.map(({ value, label, emoji }) => (
-                  <TouchableOpacity
-                    key={value}
-                    style={[
-                      styles.themeOption,
-                      settings.theme === value && styles.themeOptionActive,
-                    ]}
-                    onPress={() => updateSetting('theme', value)}
-                  >
-                    <Text style={styles.themeEmoji}>{emoji}</Text>
-                    <Text
-                      style={[
-                        styles.themeLabel,
-                        settings.theme === value && styles.themeLabelActive,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Behavior Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Behavior</Text>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Haptic Feedback</Text>
-                <Text style={styles.settingDescription}>
-                  Vibrate when capturing
-                </Text>
-              </View>
-              <Switch
-                value={settings.hapticFeedback}
-                onValueChange={(value) => updateSetting('hapticFeedback', value)}
-                trackColor={{ false: '#3f3f5a', true: '#6366f1' }}
-                thumbColor="#fff"
-              />
-            </View>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Auto-open Keyboard</Text>
-                <Text style={styles.settingDescription}>
-                  Show keyboard on app launch
-                </Text>
-              </View>
-              <Switch
-                value={settings.autoOpenKeyboard}
-                onValueChange={(value) => updateSetting('autoOpenKeyboard', value)}
-                trackColor={{ false: '#3f3f5a', true: '#6366f1' }}
-                thumbColor="#fff"
-              />
-            </View>
-          </View>
-
-          {/* Default Category Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Default Category</Text>
-            <Text style={styles.sectionDescription}>
-              New captures will be added to this category
-            </Text>
-
-            <View style={styles.categoryGrid}>
-              {categories.map((category) => (
+            {INTEGRATIONS.map((integration) => (
+              <View key={integration.id} style={styles.integrationRow}>
+                <View style={styles.integrationInfo}>
+                  <Text style={styles.integrationEmoji}>{integration.emoji}</Text>
+                  <Text style={styles.integrationName}>{integration.name}</Text>
+                </View>
                 <TouchableOpacity
-                  key={category.id}
                   style={[
-                    styles.categoryOption,
-                    settings.defaultCategory === category.id &&
-                      styles.categoryOptionActive,
+                    styles.connectButton,
+                    integration.connected && styles.connectedButton,
                   ]}
-                  onPress={() => updateSetting('defaultCategory', category.id)}
+                  onPress={() => handleConnect(integration.id, integration.isNative)}
                 >
-                  <Text style={styles.categoryEmoji}>{category.emoji}</Text>
                   <Text
                     style={[
-                      styles.categoryName,
-                      settings.defaultCategory === category.id &&
-                        styles.categoryNameActive,
+                      styles.connectButtonText,
+                      integration.connected && styles.connectedButtonText,
                     ]}
                   >
-                    {category.name}
+                    {integration.connected
+                      ? 'Manage'
+                      : integration.isNative
+                        ? 'Grant Access'
+                        : 'Connect'}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              </View>
+            ))}
           </View>
 
-          {/* About Section */}
+          {/* Data Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>About</Text>
-            <View style={styles.aboutRow}>
-              <Text style={styles.aboutLabel}>Version</Text>
-              <Text style={styles.aboutValue}>0.1.0 (MVP)</Text>
-            </View>
-            <View style={styles.aboutRow}>
-              <Text style={styles.aboutLabel}>Built with</Text>
-              <Text style={styles.aboutValue}>Expo SDK 54</Text>
-            </View>
+            <Text style={styles.sectionTitle}>DATA</Text>
+
+            <TouchableOpacity style={styles.actionRow} onPress={handleExportAll}>
+              <Text style={styles.actionEmoji}>📤</Text>
+              <Text style={styles.actionText}>Export All Captures</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Footer spacing */}
@@ -192,30 +166,49 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: '70%',
+    height: '55%',
     backgroundColor: '#13131f',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
   header: {
+    flexDirection: 'row',
     paddingTop: 8,
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#1e1e2e',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   handle: {
+    position: 'absolute',
+    top: 8,
     width: 36,
     height: 4,
     backgroundColor: '#3f3f5a',
     borderRadius: 2,
-    marginBottom: 12,
   },
   title: {
     fontSize: 20,
     fontWeight: '700',
     color: '#fff',
+    marginTop: 16,
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 16,
+    top: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1e1e2e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    fontSize: 16,
+    color: '#999',
   },
   content: {
     flex: 1,
@@ -225,113 +218,69 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#6366f1',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 12,
   },
-  sectionDescription: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 12,
-  },
-  settingRow: {
+  integrationRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#1e1e2e',
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     marginBottom: 8,
   },
-  settingInfo: {
-    flex: 1,
-  },
-  settingLabel: {
-    fontSize: 16,
-    color: '#fff',
-    marginBottom: 2,
-  },
-  settingDescription: {
-    fontSize: 13,
-    color: '#666',
-  },
-  themeOptions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  themeOption: {
+  integrationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#13131f',
-    paddingHorizontal: 12,
+  },
+  integrationEmoji: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  integrationName: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  connectButton: {
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
+  },
+  connectedButton: {
+    backgroundColor: '#1e1e2e',
     borderWidth: 1,
     borderColor: '#3f3f5a',
   },
-  themeOptionActive: {
-    borderColor: '#6366f1',
-    backgroundColor: '#6366f120',
-  },
-  themeEmoji: {
+  connectButtonText: {
     fontSize: 14,
-    marginRight: 6,
+    color: '#fff',
+    fontWeight: '600',
   },
-  themeLabel: {
-    fontSize: 13,
+  connectedButtonText: {
     color: '#999',
   },
-  themeLabelActive: {
-    color: '#fff',
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  categoryOption: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1e1e2e',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    padding: 14,
   },
-  categoryOptionActive: {
-    borderColor: '#6366f1',
-    backgroundColor: '#6366f120',
+  actionEmoji: {
+    fontSize: 20,
+    marginRight: 12,
   },
-  categoryEmoji: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  categoryName: {
-    fontSize: 14,
-    color: '#999',
-  },
-  categoryNameActive: {
+  actionText: {
+    fontSize: 16,
     color: '#fff',
-  },
-  aboutRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e1e2e',
-  },
-  aboutLabel: {
-    fontSize: 15,
-    color: '#666',
-  },
-  aboutValue: {
-    fontSize: 15,
-    color: '#fff',
+    fontWeight: '500',
   },
   footer: {
     height: 40,

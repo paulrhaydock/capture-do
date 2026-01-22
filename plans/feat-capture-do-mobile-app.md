@@ -21,15 +21,15 @@
 4. **Type Safety:** Use discriminated unions for Capture types; branded types for dates and confidence scores
 5. **Agent Parity:** Current MCP design is only 25% agent-capable; need create/edit/delete tools
 
-### Simplification Opportunities (YAGNI)
+### Simplifications Applied
 
-| Feature | Recommendation |
-|---------|----------------|
-| 4-Tier Processing | Consider 2-tier (Regex + LLM) for MVP |
-| Brain Dump Mode | Consider cutting from MVP |
-| Dynamic Categories | Start with 5 fixed categories |
-| MCP Desktop Bridge | Phase 3+ feature |
-| 6 Database Tables | Reduce to 3 for MVP |
+| Feature | Status |
+|---------|--------|
+| 4-Tier Processing | ✅ Simplified to 2-tier (Regex + Llama) |
+| Dynamic Categories | ✅ Fixed to 5 categories: task, idea, shopping, reminder, note |
+| MCP Desktop Bridge | ✅ **REMOVED** - Using direct API push instead |
+| TinyML Classifier | ✅ **REMOVED** - Unnecessary complexity |
+| 6 Database Tables | ✅ Reduced to 4 tables (removed category merge tracking) |
 
 ### Critical Pre-Launch Checklist
 
@@ -62,7 +62,7 @@ CaptureDo is a cross-platform mobile app (iOS + Android) that enables users to c
 - Swipe right to complete/archive, swipe left to delete
 - Tap to view details and make corrections
 
-**Sync Philosophy:** Mobile app PUSHES state to cloud/sync service. A Desktop Bridge component runs the MCP Server for AI agents to query.
+**Sync Philosophy:** Mobile app pushes directly to connected services (Todoist, Apple Reminders, Claude, ChatGPT) via OAuth. No desktop bridge required.
 
 **Key Differentiator:** True "fire and forget" capture. On-device AI processing happens silently in background - user experiences instant capture with no wait states.
 
@@ -135,12 +135,10 @@ Current productivity apps suffer from:
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
 │   │                    Background Worker                                 │   │
 │   │  ┌─────────────────────────────────────────────────────────────┐    │   │
-│   │  │              Hybrid Processing Engine                        │    │   │
+│   │  │              Hybrid Processing Engine (2-Tier)               │    │   │
 │   │  │                                                              │    │   │
 │   │  │  Tier 1: Regex/Heuristics (instant, ~0 battery)             │    │   │
-│   │  │  Tier 2: TinyML Classifier (<5MB, low battery)              │    │   │
-│   │  │  Tier 3: Llama 3.2 1B (only if complex)                     │    │   │
-│   │  │  Tier 4: Cloud Fallback (optional)                          │    │   │
+│   │  │  Tier 2: Llama 3.2 1B (for complex captures)                │    │   │
 │   │  └─────────────────────────────────────────────────────────────┘    │   │
 │   │  Also: whisper.rn (Voice STT), Batch Processing                     │   │
 │   └───────────────────────────────────┬─────────────────────────────────┘   │
@@ -154,38 +152,14 @@ Current productivity apps suffer from:
 │                                       │ AUTO-SYNC (background)               │
 │                                       ▼                                      │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │                         Sync Engine                                  │   │
-│   │   • Push to Cloud Relay (iCloud / CaptureDo Cloud)                  │   │
-│   │   • Push to OAuth-connected accounts (Claude/ChatGPT)               │   │
+│   │                    Sync Engine (Direct API Push)                     │   │
+│   │   • Todoist API (OAuth) - tasks with due dates                      │   │
+│   │   • Apple Reminders (native) - location/time reminders              │   │
+│   │   • Claude API (OAuth) - context for AI conversations               │   │
+│   │   • ChatGPT API (OAuth) - context for AI conversations              │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
-└──────────────────────────────────────┬───────────────────────────────────────┘
-                                       │
-                                       │ Synced Data
-                                       ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                       Desktop Bridge (User's Computer)                        │
-│  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │   Reads synced data from iCloud / Cloud Relay                          │  │
-│  │   Runs MCP Server (localhost:3847)                                     │  │
-│  │   Claude Desktop / Claude Code connects here                           │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────────┘
-                                       │
-                                       ▼
-                    ┌──────────────────────────────────┐
-                    │        External AI Agents        │
-                    │                                  │
-                    │  MCP PULL (via Desktop Bridge):  │
-                    │    • Claude Desktop              │
-                    │    • Claude Code                 │
-                    │    • Any MCP-compatible client   │
-                    │                                  │
-                    │  PUSH (direct from mobile):      │
-                    │    • Claude API (OAuth)          │
-                    │    • ChatGPT API (OAuth)         │
-                    │                                  │
-                    └──────────────────────────────────┘
 ```
 
 ### Cold Start Strategy
@@ -213,7 +187,7 @@ App Launch Timeline:
 
 **Performance Findings:**
 - Cold start <1s is achievable but requires progressive model loading
-- LLM won't be ready at cold start - Tier 1/2 must handle initial captures
+- LLM won't be ready at cold start - Tier 1 (regex) handles initial captures
 - Memory-mapped model loading reduces resident memory from 700MB to ~400MB
 
 **Architecture Concerns Identified:**
@@ -251,10 +225,7 @@ renderPlaceholderUI();
 await initializeSQLite();
 renderFullUI();
 
-// Stage 3: ML (background, non-blocking)
-requestIdleCallback(() => initializeTinyML());
-
-// Stage 4: Heavy ML (deferred 1s after UI settles)
+// Stage 3: LLM (background, non-blocking, deferred 1s after UI settles)
 setTimeout(() => initializeLlama(), 1000);
 ```
 
@@ -277,16 +248,15 @@ setTimeout(() => initializeLlama(), 1000);
 | Layer | Technology | Rationale |
 |-------|------------|-----------|
 | **Framework** | React Native 0.81 + Expo SDK 54 | Single codebase, New Architecture default, fast builds |
-| **On-Device LLM** | llama.rn + Llama 3.2 1B (Q4_K_M) | 20-35 tok/s, Tier 3 processing, Metal/NPU acceleration |
-| **TinyML Classifier** | TensorFlow Lite (<5MB) | Tier 2 complexity detection, minimal battery |
+| **On-Device LLM** | llama.rn + Llama 3.2 1B (Q4_K_M) | 20-35 tok/s, Tier 2 processing, Metal/NPU acceleration |
 | **Speech-to-Text** | whisper.rn (offline) | Privacy-first, high accuracy, no network needed |
 | **Local Storage** | expo-sqlite | Fast, reliable, offline-first |
 | **Job Queue** | Custom + expo-background-fetch | Async processing, survives app close |
 | **State Management** | Zustand | Minimal boilerplate, excellent performance |
 | **Navigation** | expo-router | File-based routing, deep linking support |
-| **Auth** | expo-auth-session | OAuth flows for Claude/ChatGPT |
-| **Sync (Push)** | Claude API + OpenAI API | OAuth-authenticated, structured data |
-| **Sync (Pull)** | MCP Server (Streamable HTTP) | External agents query CaptureDo |
+| **Auth** | expo-auth-session | OAuth flows for external services |
+| **Sync (Push)** | Direct API calls | Todoist, Claude, ChatGPT via OAuth |
+| **Reminders** | Native iOS/Android APIs | Apple Reminders + Android equivalent |
 | **Location** | expo-location | Background location capture |
 
 ---
@@ -316,7 +286,7 @@ interface Capture {
   refinedContent: string;              // Cleaned, enriched text
   category: CaptureCategory;
   confidence: number;                  // 0-1 LLM confidence score
-  processingTier: 1 | 2 | 3 | 4;       // Which tier handled this capture
+  processingTier: 1 | 2;               // Tier 1: Regex, Tier 2: Llama
 
   // Extracted entities
   dueDate?: string;                    // ISO8601
@@ -344,18 +314,17 @@ interface Capture {
   appVersion: string;
 }
 
-// Categories are DYNAMIC - LLM creates new ones as needed
-type CaptureCategory = string;  // Dynamic - not a fixed enum
+// Fixed categories - simple and predictable
+type CaptureCategory = 'task' | 'idea' | 'shopping' | 'reminder' | 'note';
 
-// Default preset categories (seeded on first launch)
-const DEFAULT_CATEGORIES = [
-  'todo',       // Actionable task
-  'idea',       // Creative thought
-  'note',       // General information
-  'meeting',    // Meeting-related
-  'reminder',   // Time-based reminder
-  'shopping',   // Shopping list item
-] as const;
+// Category definitions
+const CATEGORIES: Record<CaptureCategory, { label: string; color: string }> = {
+  task: { label: 'Task', color: '#3B82F6' },      // Actionable item
+  idea: { label: 'Idea', color: '#8B5CF6' },      // Creative thought
+  shopping: { label: 'Shopping', color: '#10B981' }, // Shopping list item
+  reminder: { label: 'Reminder', color: '#F59E0B' }, // Time/location reminder
+  note: { label: 'Note', color: '#6B7280' },      // General information
+};
 
 // FIRE AND FORGET - no "pending_review" state!
 type CaptureStatus =
@@ -367,7 +336,7 @@ type CaptureStatus =
   | 'failed'          // Processing or sync failed
   | 'deleted';        // Soft deleted
 
-type SyncTarget = 'claude' | 'chatgpt' | 'mcp';
+type SyncTarget = 'todoist' | 'reminders' | 'claude' | 'chatgpt';
 
 interface SyncStatusRecord {
   target: SyncTarget;
@@ -420,27 +389,29 @@ function isVoiceCapture(c: Capture): c is VoiceCapture {
 }
 ```
 
-**Simplification Option (YAGNI):** Consider starting with 5 fixed categories instead of dynamic:
+**Applied Simplification:** Using 5 fixed categories instead of dynamic:
 ```typescript
 type CaptureCategory = 'task' | 'idea' | 'shopping' | 'reminder' | 'note';
 ```
 
-### Hybrid Processing Engine (Battery Optimization)
+### Hybrid Processing Engine (2-Tier)
 
-To prevent NPU drain on every capture, we implement a **tiered triage system**:
+Simple 2-tier system to balance speed and intelligence:
 
 ```typescript
 // src/services/processing/hybridEngine.ts
 
 /**
  * TIER 1: Regex/Heuristics (instant, ~0 battery)
- * Handles simple, well-structured inputs without invoking any ML.
+ * Handles simple, well-structured inputs without invoking the LLM.
+ * Handles ~30% of captures with zero battery cost.
  */
-const SIMPLE_PATTERNS = {
+const SIMPLE_PATTERNS: Record<CaptureCategory, RegExp> = {
   reminder: /^remind(?:er)?:?\s+(?:me\s+)?(.+?)\s+(?:at|on)\s+(.+)$/i,
-  todo: /^(?:todo|task|do):?\s+(.+)$/i,
-  shopping: /^(?:buy|get|pick up):?\s+(.+)$/i,
-  call: /^call\s+(.+)$/i,
+  task: /^(?:todo|task|do):?\s+(.+)$/i,
+  shopping: /^(?:buy|get|pick up|grocery|groceries):?\s+(.+)$/i,
+  idea: /^(?:idea|thought):?\s+(.+)$/i,
+  note: /^(?:note|remember):?\s+(.+)$/i,
 };
 
 function tryTier1(rawInput: string): ProcessedCapture | null {
@@ -449,11 +420,10 @@ function tryTier1(rawInput: string): ProcessedCapture | null {
     if (match) {
       return {
         refinedContent: match[1].trim(),
-        category,
+        category: category as CaptureCategory,
         processingTier: 1,
         confidence: 0.95,
-        dueDate: extractDateFromText(match[2] || null),  // Native date parsing
-        // ... other fields
+        dueDate: extractDateFromText(match[2] || null),
       };
     }
   }
@@ -461,23 +431,11 @@ function tryTier1(rawInput: string): ProcessedCapture | null {
 }
 
 /**
- * TIER 2: TinyML Classifier (<5MB TFLite model, low battery)
- * Quick classification to decide if we need full LLM processing.
- */
-type CaptureComplexity = 'simple' | 'complex' | 'brain_dump';
-
-async function classifyComplexity(rawInput: string): Promise<CaptureComplexity> {
-  // Uses tiny TensorFlow Lite model (~3MB)
-  // Trained to detect: single task vs complex note vs brain dump
-  const classifier = await getTinyClassifier();
-  return classifier.predict(rawInput);
-}
-
-/**
- * TIER 3: Llama 3.2 1B (only for complex captures)
+ * TIER 2: Llama 3.2 1B (for all other captures)
  * Full refinement, categorization, entity extraction.
+ * Also handles brain dump detection and splitting.
  */
-async function processTier3(rawInput: string): Promise<ProcessedCapture | ProcessedCapture[]> {
+async function processTier2(rawInput: string): Promise<ProcessedCapture | ProcessedCapture[]> {
   const context = await getLlamaContext();
   const result = await context.completion({
     prompt: `${SYSTEM_PROMPT}\n\nCapture: "${rawInput}"\n\nJSON:`,
@@ -489,88 +447,40 @@ async function processTier3(rawInput: string): Promise<ProcessedCapture | Proces
 }
 
 /**
- * TIER 4: Cloud Fallback (optional, if local processing fails)
- */
-async function processTier4(rawInput: string): Promise<ProcessedCapture> {
-  // Only used if local LLM crashes or produces invalid output
-  // Uses minimal cloud API call
-}
-
-/**
- * Main processing pipeline
+ * Main processing pipeline (2-tier)
  */
 async function processCapture(rawInput: string): Promise<{
   captures: ProcessedCapture[];
   wasSplit: boolean;
-  tier: number;
+  tier: 1 | 2;
 }> {
-  // TIER 1: Try simple patterns first
+  // TIER 1: Try simple patterns first (instant, ~0 battery)
   const tier1Result = tryTier1(rawInput);
   if (tier1Result) {
     return { captures: [tier1Result], wasSplit: false, tier: 1 };
   }
 
-  // TIER 2: Classify complexity
-  const complexity = await classifyComplexity(rawInput);
+  // TIER 2: Use Llama for everything else
+  const result = await processTier2(rawInput);
 
-  if (complexity === 'simple') {
-    // Simple but didn't match Tier 1 patterns - use Tier 3 but flag as simple
-    const result = await processTier3(rawInput);
-    return { captures: [result as ProcessedCapture], wasSplit: false, tier: 3 };
+  // Handle brain dump splitting (Llama returns array if multiple items detected)
+  if (Array.isArray(result)) {
+    return { captures: result, wasSplit: result.length > 1, tier: 2 };
   }
 
-  if (complexity === 'brain_dump') {
-    // BRAIN DUMP MODE: Split into multiple captures
-    const results = await processBrainDump(rawInput);
-    return { captures: results, wasSplit: results.length > 1, tier: 3 };
-  }
-
-  // Complex capture - full Tier 3 processing
-  const result = await processTier3(rawInput);
-  return { captures: [result as ProcessedCapture], wasSplit: false, tier: 3 };
+  return { captures: [result], wasSplit: false, tier: 2 };
 }
 
 /**
  * BATCH PROCESSING: If multiple captures arrive quickly,
  * spin up Llama once to process the batch (not once per item).
  */
-async function processBatch(captures: RawCapture[]): Promise<void> {
-  const context = await getLlamaContext();  // Single load
-
-  for (const capture of captures) {
-    const result = await processCapture(capture.rawInput);
-    await saveProcessedCapture(capture.id, result);
-  }
-  // Context stays warm for next batch
-}
-```
-
-#### Research Insights: Processing Engine
-
-**Anti-Patterns Found in Code:**
-
-1. **Missing Tier 2 Implementation:** Code says "TIER 2" but actually does classification, not TinyML processing
-2. **No Error Handling in Batch:** Single failure stops entire batch; no retry logic
-3. **No Context Cleanup:** Memory leak risk if context isn't released
-
-**Recommended Improvements:**
-
-```typescript
-// Chain of Responsibility pattern - cleaner tiered processing
-interface ProcessingTier {
-  name: string;
-  tierLevel: number;
-  canHandle(input: string): Promise<boolean>;
-  process(input: string): Promise<ProcessedCapture[]>;
-}
-
-// Batch processing with error resilience
 async function processBatch(captures: RawCapture[]): Promise<BatchResult> {
-  const result = { successful: [], failed: [] };
+  const result: BatchResult = { successful: [], failed: [] };
   let context: LlamaContext | null = null;
 
   try {
-    context = await getLlamaContext();
+    context = await getLlamaContext();  // Single load
 
     const results = await Promise.allSettled(
       captures.map(async (capture) => {
@@ -580,7 +490,14 @@ async function processBatch(captures: RawCapture[]): Promise<BatchResult> {
       })
     );
 
-    // Categorize results...
+    // Categorize results
+    for (const [i, r] of results.entries()) {
+      if (r.status === 'fulfilled') {
+        result.successful.push(r.value);
+      } else {
+        result.failed.push({ id: captures[i].id, error: r.reason });
+      }
+    }
   } finally {
     if (context) await context.release();  // Always cleanup
   }
@@ -589,13 +506,10 @@ async function processBatch(captures: RawCapture[]): Promise<BatchResult> {
 }
 ```
 
-**Battery Analysis:**
+**Battery Analysis (2-Tier):**
 - Tier 1 (Regex): ~0.001 mAh per capture - handles ~30% of inputs
-- Tier 2 (TinyML): ~0.01 mAh per capture
-- Tier 3 (Llama): ~0.5-2.0 mAh per capture
+- Tier 2 (Llama): ~0.5-2.0 mAh per capture - handles remaining 70%
 - **Target <3% battery per 50 captures is achievable** with proper tier routing
-
-**Simplification Option:** Consider 2-tier (Regex + LLM) for MVP. TinyML adds complexity without training data.
 
 ### Brain Dump Mode
 
@@ -610,18 +524,24 @@ Your job:
 1. Identify EACH distinct idea, task, or thought in the input
 2. Split them into separate items
 3. Refine each item individually
-4. Preserve the connection via parentCaptureId
+4. Assign one of the 5 fixed categories: task, idea, shopping, reminder, note
 
 SPLITTING RULES:
 - "Buy milk AND call mom AND fix the fence" → 3 separate items
 - "Meeting notes: discussed budget, need to follow up with Sarah, also remember to book flights" → 3 separate items
 - A single coherent thought stays as one item, even if long
 
+CATEGORIES (choose ONE per item):
+- task: Actionable item that needs to be done
+- idea: Creative thought or concept to explore
+- shopping: Item to purchase
+- reminder: Time or location-based reminder
+- note: General information to remember
+
 For EACH item, output:
 {
   "refinedContent": "string",
-  "category": "string",
-  "isNewCategory": true/false,
+  "category": "task" | "idea" | "shopping" | "reminder" | "note",
   "confidence": 0.0-1.0,
   "dueDate": "ISO8601 or null",
   "tags": ["string"]
@@ -688,19 +608,20 @@ const SYSTEM_PROMPT = `You are a capture assistant. Your job is to refine quick 
 
 For each capture, you must:
 1. Fix spelling and grammar (preserve proper nouns, brands, code)
-2. Assign ONE category from existing categories OR create a new one if none fit
+2. Assign ONE category from the fixed list below
 3. Extract any dates/times mentioned (output ISO8601 format)
 4. Extract people names if mentioned
 5. Add brief context if the capture is ambiguous
 
-DYNAMIC CATEGORY RULES:
-- Existing categories: {{existing_categories}}
-- If the capture fits an existing category, use it
-- If NO existing category fits well, create a NEW category name (lowercase, single word or hyphenated)
-- Keep categories distinct and meaningful - avoid creating duplicates
+CATEGORIES (choose exactly ONE):
+- task: Actionable item that needs to be done (default if unclear)
+- idea: Creative thought or concept to explore later
+- shopping: Item to purchase or add to shopping list
+- reminder: Time-based or location-based reminder
+- note: General information to remember
 
 BRAIN DUMP HANDLING:
-- If the input contains MULTIPLE DISTINCT ideas/tasks, you MUST split them
+- If the input contains MULTIPLE DISTINCT ideas/tasks, return a JSON array
 - "Buy milk AND call mom" = TWO separate items
 - A single coherent thought stays as one item
 
@@ -711,27 +632,16 @@ Date handling rules:
 - "end of month" = last day of current month
 - Ambiguous dates: make your best guess, include confidence
 
-Output JSON only:
+Output JSON only (single item or array for brain dumps):
 {
   "refinedContent": "string",
-  "category": "string",
-  "isNewCategory": true/false,
+  "category": "task" | "idea" | "shopping" | "reminder" | "note",
   "confidence": 0.0-1.0,
   "dueDate": "ISO8601 or null",
   "reminderDate": "ISO8601 or null",
   "extractedPeople": ["string"],
   "tags": ["string"]
 }`;
-
-// Category consolidation runs periodically to merge similar categories
-const CATEGORY_CONSOLIDATION_PROMPT = `Review these categories and suggest merges to keep the list minimal but distinct:
-{{categories_with_counts}}
-
-Rules:
-- Merge categories that are essentially the same thing
-- Keep categories that represent genuinely different types of captures
-- Aim for 6-12 total categories maximum
-- Return JSON: { "merges": [{ "from": "old-category", "to": "keep-category" }] }`;
 ```
 
 ### Voice Capture Flow
@@ -774,186 +684,17 @@ async function startVoiceCapture(onTranscript: (text: string) => void) {
 }
 ```
 
-### Sync Architecture: MCP + Push Hybrid
+### Sync Architecture: Direct API Push
 
-CaptureDo implements a **dual sync strategy**:
+CaptureDo uses **direct API push** from the mobile app to connected services. No desktop bridge or intermediate server required.
 
-1. **MCP Source** (Pull) - External AI agents query CaptureDo's data on demand
-2. **Push Sync** (Push) - Auto-sync to connected accounts via OAuth
+**Sync Targets:**
+- **Todoist** - Tasks with due dates sync as Todoist tasks
+- **Apple Reminders** - Location/time reminders sync natively
+- **Claude** - Captures sync as context for AI conversations
+- **ChatGPT** - Captures sync as context for AI conversations
 
 **NO MANUAL API KEYS** - Users connect accounts via OAuth, not by pasting API keys.
-
-#### MCP Architecture: Desktop Bridge Pattern
-
-**Important:** The MCP Server does NOT run inside the mobile app. Mobile apps cannot reliably act as HTTP servers.
-
-**Architecture:**
-1. Mobile app PUSHES data to cloud relay (iCloud, Google Drive, or CaptureDo Cloud)
-2. Desktop Bridge app reads synced data
-3. Desktop Bridge runs the MCP Server
-4. Claude Desktop/Code connects to the Desktop Bridge
-
-```
-┌─────────────────┐     Sync      ┌──────────────────┐
-│  Mobile App     │ ─────────────→│  Cloud Relay     │
-│  (Push Only)    │               │  (iCloud/etc)    │
-└─────────────────┘               └────────┬─────────┘
-                                           │
-                                           │ Read
-                                           ▼
-                                  ┌──────────────────┐
-                                  │  Desktop Bridge  │
-                                  │  (MCP Server)    │
-                                  │  localhost:3847  │
-                                  └────────┬─────────┘
-                                           │
-                                           │ MCP Protocol
-                                           ▼
-                                  ┌──────────────────┐
-                                  │  Claude Desktop  │
-                                  │  / Claude Code   │
-                                  └──────────────────┘
-```
-
-```typescript
-// desktop-bridge/src/server.ts
-// NOTE: This server runs on the User's DESKTOP, not the mobile app.
-// It reads data synced from the mobile app via iCloud/cloud relay.
-
-import { McpServer } from 'mcp-server-streamable-http';
-import { readSyncedCaptures } from './icloud-reader';
-
-/**
- * CaptureDo Desktop Bridge - MCP Server
- *
- * Reads captures synced from mobile app and exposes them to AI agents.
- */
-const mcpServer = new McpServer({
-  name: 'capturedo-bridge',
-  version: '1.0.0',
-});
-
-// Resource: All captures (reads from synced data)
-mcpServer.resource('captures', {
-  uri: 'capturedo://captures',
-  description: 'All captured items from CaptureDo mobile',
-  mimeType: 'application/json',
-  async read(params) {
-    const captures = await readSyncedCaptures({
-      category: params.category,
-      since: params.since,
-    });
-    return JSON.stringify(captures, null, 2);
-  },
-});
-
-// Resource: Today's captures
-mcpServer.resource('today', {
-  uri: 'capturedo://today',
-  description: 'Items captured today',
-  mimeType: 'application/json',
-  async read() {
-    const today = new Date().toISOString().split('T')[0];
-    return JSON.stringify(await readSyncedCaptures({ since: today }));
-  },
-});
-
-// Tool: Mark item as actioned (syncs back to mobile)
-mcpServer.tool('mark_actioned', {
-  description: 'Mark a capture as actioned/completed',
-  inputSchema: {
-    type: 'object',
-    properties: { captureId: { type: 'string' } },
-    required: ['captureId'],
-  },
-  async execute({ captureId }) {
-    await writeSyncedAction(captureId, 'completed');
-    return { success: true };
-  },
-});
-
-mcpServer.listen({ port: 3847 });
-console.log('CaptureDo Bridge running on localhost:3847');
-```
-
-**User Setup:**
-
-1. Install CaptureDo Desktop Bridge (macOS/Windows)
-2. Sign in with same iCloud/account as mobile app
-3. In Claude Desktop settings, add:
-```json
-{
-  "mcpServers": {
-    "capturedo": {
-      "url": "http://localhost:3847"
-    }
-  }
-}
-```
-
-#### Research Insights: Agent-Native Architecture (MCP)
-
-**Critical Finding: Only 25% Agent Capability Parity**
-
-| User Action | Agent Tool | Status |
-|-------------|------------|--------|
-| Capture text | None | **MISSING** |
-| Filter by category | Partial | Incomplete |
-| Swipe to complete | `mark_actioned` | OK |
-| Swipe to delete | None | **MISSING** |
-| Edit capture | None | **MISSING** |
-| Trigger sync | None | **MISSING** |
-
-**Required Tools for Full Agent Parity:**
-
-```typescript
-// ADD: Create capture
-mcpServer.tool('create_capture', {
-  description: 'Create a new capture item',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      content: { type: 'string' },
-      category: { type: 'string' },
-      source: { type: 'string', default: 'agent' },
-    },
-    required: ['content'],
-  },
-  async execute({ content, category, source }) {
-    return await writeSyncedCapture({ content, category, source });
-  },
-});
-
-// ADD: Delete capture
-mcpServer.tool('delete_capture', {
-  description: 'Delete a capture item',
-  inputSchema: {
-    type: 'object',
-    properties: { captureId: { type: 'string' } },
-    required: ['captureId'],
-  },
-  async execute({ captureId }) {
-    await writeSyncedAction(captureId, 'deleted');
-    return { success: true };
-  },
-});
-
-// ADD: Sync status resource
-mcpServer.resource('sync_status', {
-  uri: 'capturedo://sync',
-  async read() {
-    return JSON.stringify({
-      lastSyncTime: await getLastSyncTime(),
-      pendingChanges: await getPendingChangeCount(),
-      syncHealth: await getSyncHealth(),
-    });
-  },
-});
-```
-
-**Security Consideration:** Verify MCP server binds to `127.0.0.1` ONLY, not `0.0.0.0`.
-
-**Simplification Option:** Consider cutting MCP from Phase 1. OAuth push sync covers 99% of use cases.
 
 #### OAuth-Based Account Connection
 
@@ -1079,6 +820,18 @@ async function connectClaudeSecure(): Promise<void> {
 async function syncToConnectedAccounts(captures: Capture[]): Promise<void> {
   const connections = await getConnectedAccounts();
 
+  // Sync tasks to Todoist (if connected)
+  if (connections.todoist) {
+    const tasks = captures.filter(c => c.category === 'task');
+    await syncToTodoist(tasks, connections.todoist.accessToken);
+  }
+
+  // Sync reminders to Apple Reminders (if granted)
+  if (connections.reminders) {
+    const reminders = captures.filter(c => c.category === 'reminder');
+    await syncToAppleReminders(reminders);
+  }
+
   // Sync to Claude (if connected)
   if (connections.claude) {
     await syncToClaude(captures, connections.claude.accessToken);
@@ -1090,10 +843,37 @@ async function syncToConnectedAccounts(captures: Capture[]): Promise<void> {
   }
 }
 
+/**
+ * Sync tasks to Todoist
+ */
+async function syncToTodoist(captures: Capture[], accessToken: string): Promise<void> {
+  const todoist = new TodoistApi(accessToken);
+
+  for (const capture of captures) {
+    await todoist.addTask({
+      content: capture.refinedContent,
+      dueDate: capture.dueDate || undefined,
+      labels: capture.tags || [],
+    });
+  }
+}
+
+/**
+ * Sync reminders to Apple Reminders (native iOS API)
+ */
+async function syncToAppleReminders(captures: Capture[]): Promise<void> {
+  // Uses expo-calendar or native iOS EventKit
+  for (const capture of captures) {
+    await NativeReminders.createReminder({
+      title: capture.refinedContent,
+      dueDate: capture.dueDate || undefined,
+      location: capture.locationLabel || undefined,
+    });
+  }
+}
+
 async function syncToClaude(captures: Capture[], accessToken: string): Promise<void> {
   const anthropic = new Anthropic({ accessToken });
-
-  // Upload captures as structured file
   const capturesMarkdown = generateCapturesMarkdown(captures);
 
   const fileResponse = await anthropic.files.create({
@@ -1101,7 +881,6 @@ async function syncToClaude(captures: Capture[], accessToken: string): Promise<v
     purpose: 'user_data',
   });
 
-  // Send acknowledgment message
   await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 256,
@@ -1117,7 +896,6 @@ async function syncToClaude(captures: Capture[], accessToken: string): Promise<v
 
 async function syncToChatGPT(captures: Capture[], accessToken: string): Promise<void> {
   const openai = new OpenAI({ accessToken });
-
   const conversationId = await getOrCreateConversationId('chatgpt');
 
   const captureText = captures.map(c =>
@@ -1224,30 +1002,26 @@ android/
 
 ---
 
-### Phase 2: On-Device Intelligence + Wearables
+### Phase 2: On-Device Intelligence
 
-**Goal:** Hybrid processing engine + Apple Watch / Wear OS standalone apps
+**Goal:** 2-tier hybrid processing engine with Llama 3.2 1B
 
 **Deliverables:**
-- [ ] Hybrid Processing Engine (Tier 1-4 system)
-- [ ] TinyML classifier for complexity detection (<5MB)
+- [ ] Hybrid Processing Engine (2-tier: Regex + Llama)
 - [ ] llama.rn integration with cold start optimization (loads AFTER UI ready)
 - [ ] Model download flow with progress UI
 - [ ] Brain Dump splitting with subtle notification + undo
 - [ ] Refined content display in Log screen
 - [ ] Category badges and due date display
 - [ ] Edit captures in Log (for corrections only)
-- [ ] **Apple Watch app** - one-tap complication → voice capture → sync to phone
-- [ ] **Wear OS app** - same functionality for Android watches
 
 **Files:**
 ```
 src/
 ├── services/
 │   └── processing/
-│       ├── hybridEngine.ts  # Tiered processing (Regex → TinyML → Llama → Cloud)
+│       ├── hybridEngine.ts  # 2-tier processing (Regex → Llama)
 │       ├── brainDump.ts     # Multi-item splitting
-│       ├── tinyClassifier.ts # TFLite complexity classifier
 │       └── batchProcessor.ts # Queue-based batch processing
 │   └── llm/
 │       ├── context.ts       # LLM context management (lazy load)
@@ -1261,24 +1035,13 @@ src/
 │   └── SplitNotification.tsx    # "Split into 3 items" toast + undo
 └── screens/
     └── ModelDownload.tsx    # First-run model download
-ios/
-├── WatchApp/                # Apple Watch standalone app
-│   ├── CaptureDoWatch.swift
-│   ├── VoiceCaptureView.swift
-│   └── ComplicationController.swift
-android/
-├── wearable/                # Wear OS app
-│   └── src/main/java/.../wear/
-│       ├── WearCaptureActivity.kt
-│       └── VoiceTileService.kt
 ```
 
 **Success Criteria:**
 - [ ] App accepts input immediately on cold start (before LLM loads)
 - [ ] Tier 1 (regex) handles ~30% of captures with zero battery cost
-- [ ] Tier 3 (Llama) only invoked for complex captures
+- [ ] Tier 2 (Llama) handles remaining 70% of captures
 - [ ] Brain Dump splits show toast with undo option
-- [ ] Watch app: one tap → recording → syncs to phone in <5s
 
 ---
 
@@ -1323,35 +1086,36 @@ src/
 
 ---
 
-### Phase 4: External Sync (Push + Desktop Bridge for MCP)
+### Phase 4: External Sync (Direct API)
 
-**Goal:** Dual sync architecture:
-1. **Push Sync** - Mobile pushes to OAuth-connected Claude/ChatGPT accounts
-2. **Desktop Bridge** - Separate desktop app runs MCP Server for AI agents
+**Goal:** Direct API push from mobile app to connected services
 
 **NO MANUAL API KEYS** - Users connect accounts via OAuth "Connect" button.
 
+**Sync Targets:**
+- **Todoist** - Tasks with due dates
+- **Apple Reminders** - Location/time reminders (native iOS integration)
+- **Claude** - Context for AI conversations
+- **ChatGPT** - Context for AI conversations
+
 **Deliverables:**
-- [ ] OAuth flows for Claude and ChatGPT ("Connect Account")
+- [ ] OAuth flows for Todoist, Claude, and ChatGPT
+- [ ] Native Reminders permission flow (iOS/Android)
 - [ ] Token storage in Keychain/Keystore
 - [ ] Background auto-sync to connected accounts
-- [ ] **Cloud relay sync** (iCloud/Google Drive) for Desktop Bridge
 - [ ] Sync status indicators in Smart List
 - [ ] Manual sync trigger option
 - [ ] Error handling with retry logic
-- [ ] **Desktop Bridge app** (separate project - macOS/Windows):
-  - Reads synced data from cloud relay
-  - Runs MCP Server on localhost:3847
-  - Claude Desktop/Code connects here
 
-**Files (Mobile App):**
+**Files:**
 ```
 src/
 ├── services/
 │   └── sync/
-│       ├── oauth.ts         # OAuth flows (Claude, ChatGPT)
+│       ├── oauth.ts         # OAuth flows (Todoist, Claude, ChatGPT)
 │       ├── pushSync.ts      # Push sync to connected accounts
-│       ├── cloudRelay.ts    # Sync to iCloud/cloud for Desktop Bridge
+│       ├── todoist.ts       # Todoist API integration
+│       ├── reminders.ts     # Native Reminders integration
 │       ├── queue.ts         # Sync queue manager
 │       └── retry.ts         # Exponential backoff
 ├── components/
@@ -1362,24 +1126,11 @@ src/
     └── SyncSettingsSection.tsx   # Part of Settings modal
 ```
 
-**Files (Desktop Bridge - Separate Project):**
-```
-desktop-bridge/
-├── src/
-│   ├── server.ts            # MCP Server implementation
-│   ├── icloud-reader.ts     # Read synced data from iCloud
-│   ├── resources.ts         # MCP resources
-│   └── tools.ts             # MCP tools (mark_actioned syncs back)
-├── package.json
-└── README.md
-```
-
 **Success Criteria:**
 - [ ] OAuth "Connect" flow completes in <30s
 - [ ] Auto-sync happens in background after processing
-- [ ] Cloud relay sync works reliably (iCloud/Google Drive)
-- [ ] Desktop Bridge reads synced data correctly
-- [ ] MCP Server queryable by Claude Desktop/Code
+- [ ] Tasks sync to Todoist with due dates
+- [ ] Reminders sync to Apple Reminders natively
 - [ ] Failed syncs retry with exponential backoff
 - [ ] No API keys visible or entered by user
 
@@ -1480,8 +1231,7 @@ src/
 - [ ] Original audio preserved for voice captures
 - [ ] Location captured automatically
 - [ ] User can view history and make corrections in Log screen
-- [ ] Auto-sync to connected accounts (OAuth)
-- [ ] MCP Server allows external AI agents to query captures
+- [ ] Auto-sync to connected accounts (Todoist, Reminders, Claude, ChatGPT via OAuth)
 - [ ] App works fully offline (sync queues until online)
 
 ### Non-Functional Requirements
@@ -1526,26 +1276,26 @@ src/
 |------------|---------|---------|
 | expo | ~54.0.0 | App framework |
 | react-native | 0.81.x | UI framework |
-| llama.rn | ^0.10.0 | On-device LLM (Tier 3) |
+| llama.rn | ^0.10.0 | On-device LLM (Tier 2) |
 | whisper.rn | ^1.x.x | Speech-to-text |
-| @tensorflow/tfjs-react-native | ^1.x.x | TinyML classifier (Tier 2) |
 | expo-sqlite | ~15.x.x | Local database |
 | expo-background-fetch | ~13.x.x | Background job processing |
 | expo-location | ~18.x.x | Location capture |
 | expo-auth-session | ~6.x.x | OAuth flows |
 | @anthropic-ai/sdk | ^0.35.x | Claude API |
 | openai | ^4.x.x | ChatGPT API |
-| mcp-server-streamable-http | ^1.x.x | MCP Server |
+| @doist/todoist-api-typescript | ^3.x.x | Todoist API |
 | expo-secure-store | ~14.x.x | Token storage |
 | zustand | ^5.x.x | State management |
 | react-native-reanimated | ^3.x.x | Fly-away animations |
 
 ### External Dependencies
 
-- Apple Developer account (for TestFlight, widgets, Watch app)
-- Google Play Console access (for internal testing, Wear OS)
+- Apple Developer account (for TestFlight, widgets)
+- Google Play Console access (for internal testing)
 - CaptureDo OAuth client registration with Anthropic (for Claude OAuth)
 - CaptureDo OAuth client registration with OpenAI (for ChatGPT OAuth)
+- CaptureDo OAuth client registration with Todoist (for Todoist OAuth)
 
 ---
 
@@ -1575,11 +1325,10 @@ src/
 ### Data Flow (Fire and Forget)
 
 1. User input → **Instant save** to local SQLite (encrypted) → UI flow ENDS
-2. Background job queue → Hybrid processing engine (Tier 1-4)
+2. Background job queue → 2-tier processing engine (Regex → Llama)
 3. On-device processing (never leaves device for processing)
 4. Refined data → Auto-queued for sync (no user approval step)
-5. Background sync → Connected accounts via OAuth tokens
-6. MCP Server → External agents can query local data on demand
+5. Background sync → Connected accounts via OAuth tokens (Todoist, Reminders, Claude, ChatGPT)
 
 ### Audio & Location Privacy
 
@@ -1593,9 +1342,8 @@ src/
 
 **Note:** Many features moved earlier in the roadmap:
 - Share Sheet → Phase 1 (critical for research workflows)
-- Apple Watch / Wear OS → Phase 2 (wrist-first capture)
 - Audio preservation → Phase 3 (always keep recordings)
-- MCP + OAuth → Phase 4 (modern sync architecture)
+- Direct API Sync → Phase 4 (Todoist, Reminders, Claude, ChatGPT)
 
 ### Version 1.1 - Enhanced Intelligence
 - Image capture with OCR (on-device text extraction from photos)
@@ -1608,11 +1356,12 @@ src/
 - **Document scan** - Multi-page document capture with edge detection
 - **Clipboard detection** - Auto-offer to capture copied text
 - **Barcode/QR scan** - Capture product info or URLs
+- **Apple Watch / Wear OS** - Wrist-first voice capture
 
 ### Version 2.0 - Collaboration & Sync
 - Multi-device sync (requires backend infrastructure)
 - Shared captures (teams/family workspaces)
-- Additional sync targets (Apple Reminders, Google Tasks, Todoist, Notion)
+- Additional sync targets (Google Tasks, Notion, Asana)
 - Zapier/Make webhooks for custom integrations
 - Enterprise SSO support
 
@@ -1653,7 +1402,7 @@ erDiagram
         float longitude
         string location_label
         string refined_content
-        string category_id FK
+        string category
         float confidence
         int processing_tier
         string due_date
@@ -1665,16 +1414,6 @@ erDiagram
         string created_at
         string updated_at
         string device_id
-    }
-
-    CATEGORY {
-        string id PK
-        string name
-        string color
-        boolean is_preset
-        int capture_count
-        string created_at
-        string merged_into_id FK
     }
 
     SYNC_STATUS {
@@ -1708,55 +1447,26 @@ erDiagram
         string scheduled_for
     }
 
-    SETTINGS {
-        string key PK
-        string value
-    }
-
-    CAPTURE }o--|| CATEGORY : belongs_to
     CAPTURE ||--o{ SYNC_STATUS : has
     CAPTURE ||--o| CAPTURE : split_from
-    CATEGORY ||--o| CATEGORY : merged_into
     CAPTURE ||--o{ JOB_QUEUE : has_jobs
 ```
 
-### Dynamic Category Management
+### Fixed Categories
 
-The LLM manages categories automatically:
-
-1. **Creation**: When a capture doesn't fit existing categories, LLM creates a new one
-2. **Tracking**: Each category tracks its `capture_count` for consolidation decisions
-3. **Consolidation**: Periodic LLM review merges similar/low-use categories
-4. **Merging**: When merged, `merged_into_id` points to the surviving category; existing captures are re-assigned
+Categories are stored as a simple string enum in the `category` field:
 
 ```typescript
-// src/services/llm/categoryManager.ts
+// 5 fixed categories - no dynamic creation or merging
+type CaptureCategory = 'task' | 'idea' | 'shopping' | 'reminder' | 'note';
 
-interface Category {
-  id: string;
-  name: string;
-  color: string;        // Auto-assigned from palette
-  isPreset: boolean;    // true for default categories
-  captureCount: number;
-  createdAt: string;
-  mergedIntoId?: string;
-}
-
-// Run weekly or when category count > 15
-async function consolidateCategories(): Promise<void> {
-  const categories = await db.getActiveCategories();
-  if (categories.length <= 12) return;
-
-  const prompt = CATEGORY_CONSOLIDATION_PROMPT
-    .replace('{{categories_with_counts}}', formatCategoriesForPrompt(categories));
-
-  const result = await llm.completion({ prompt });
-  const { merges } = JSON.parse(result.text);
-
-  for (const merge of merges) {
-    await db.mergeCategory(merge.from, merge.to);
-  }
-}
+const CATEGORIES: Record<CaptureCategory, { label: string; color: string }> = {
+  task: { label: 'Task', color: '#3B82F6' },
+  idea: { label: 'Idea', color: '#8B5CF6' },
+  shopping: { label: 'Shopping', color: '#10B981' },
+  reminder: { label: 'Reminder', color: '#F59E0B' },
+  note: { label: 'Note', color: '#6B7280' },
+};
 ```
 
 ---
@@ -1938,32 +1648,23 @@ This is a modal sheet for viewing/managing captures. Features filter chips and s
 │  Settings                        [X] │
 ├──────────────────────────────────────┤
 │                                      │
-│  CONNECTED ACCOUNTS                  │
+│  INTEGRATIONS                        │
+│  ┌──────────────────────────────────┐│
+│  │ Todoist               [Connect] ││
+│  └──────────────────────────────────┘│
+│  ┌──────────────────────────────────┐│
+│  │ Reminders        [Grant Access] ││
+│  └──────────────────────────────────┘│
 │  ┌──────────────────────────────────┐│
 │  │ ✓ Claude              [Manage]  ││
 │  │   Connected as paul@...         ││
 │  └──────────────────────────────────┘│
 │  ┌──────────────────────────────────┐│
 │  │   ChatGPT             [Connect] ││
-│  │   Not connected                 ││
 │  └──────────────────────────────────┘│
-│                                      │
-│  DESKTOP BRIDGE                      │
-│  ┌──────────────────────────────────┐│
-│  │ Sync Status: ✓ Connected        ││
-│  │ Last sync: 2 min ago            ││
-│  │ [Download Desktop Bridge →]     ││
-│  └──────────────────────────────────┘│
-│                                      │
-│  CATEGORIES                          │
-│  [Manage Categories →]               │
 │                                      │
 │  DATA                                │
 │  [Export All Captures →]             │
-│  [Clear Completed Items →]           │
-│                                      │
-│  NOTIFICATIONS                       │
-│  [Due Date Reminders] [ON]           │
 │                                      │
 └──────────────────────────────────────┘
 ```
@@ -1971,4 +1672,4 @@ This is a modal sheet for viewing/managing captures. Features filter chips and s
 ---
 
 *Plan generated with Claude Code on 2026-01-21*
-*Major revision: Fire and Forget architecture, MCP + OAuth sync, Hybrid Processing Engine*
+*Major revision: Fire and Forget architecture, 2-tier processing, Direct API sync*

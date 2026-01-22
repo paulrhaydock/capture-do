@@ -12,6 +12,15 @@ export type InputType = 'text' | 'voice' | 'image';
 // Processing status
 export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
+// Fixed categories (5 total) - matches plan
+export type CaptureCategory = 'task' | 'idea' | 'shopping' | 'reminder' | 'note';
+
+// Sync targets for direct API push
+export type SyncTarget = 'todoist' | 'reminders' | 'claude' | 'chatgpt';
+
+// Processing tier (2-tier system: Regex + Llama)
+export type ProcessingTier = 1 | 2;
+
 // Base capture interface
 interface CaptureBase {
   id: CaptureId;

@@ -43,13 +43,13 @@ CREATE INDEX IF NOT EXISTS idx_captures_created_at ON captures(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_captures_category_id ON captures(category_id);
 `;
 
-// Default categories (5 fixed for MVP)
+// Default categories (5 fixed for MVP) - matches plan: task, idea, shopping, reminder, note
 export const DEFAULT_CATEGORIES = [
-  { id: 'cat_inbox', name: 'Inbox', emoji: '📥', color: '#6366f1', sortOrder: 0 },
-  { id: 'cat_tasks', name: 'Tasks', emoji: '✅', color: '#22c55e', sortOrder: 1 },
-  { id: 'cat_ideas', name: 'Ideas', emoji: '💡', color: '#eab308', sortOrder: 2 },
-  { id: 'cat_notes', name: 'Notes', emoji: '📝', color: '#3b82f6', sortOrder: 3 },
-  { id: 'cat_reminders', name: 'Reminders', emoji: '🔔', color: '#f97316', sortOrder: 4 },
+  { id: 'cat_task', name: 'Task', emoji: '✅', color: '#3B82F6', sortOrder: 0 },
+  { id: 'cat_idea', name: 'Idea', emoji: '💡', color: '#8B5CF6', sortOrder: 1 },
+  { id: 'cat_shopping', name: 'Shopping', emoji: '🛒', color: '#10B981', sortOrder: 2 },
+  { id: 'cat_reminder', name: 'Reminder', emoji: '🔔', color: '#F59E0B', sortOrder: 3 },
+  { id: 'cat_note', name: 'Note', emoji: '📝', color: '#6B7280', sortOrder: 4 },
 ];
 
 // Default settings
@@ -57,5 +57,5 @@ export const DEFAULT_SETTINGS = {
   theme: 'system',
   hapticFeedback: 'true',
   autoOpenKeyboard: 'true',
-  defaultCategory: 'cat_inbox',
+  defaultCategory: 'cat_task',
 };
